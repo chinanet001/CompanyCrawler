@@ -1,6 +1,7 @@
 from request import Request
 from lxml import etree
 import logging
+from errors import ExtractDataFailed
 
 logger = logging.getLogger("crawlLog")
 
@@ -15,7 +16,7 @@ class HtmlParser:
         :param body: 网页的字符串
         """
         html = self._get_dom(body)
-        for category_url in html.xpath("//div[@id='category']//a[@target='_blank']/@href"):
+        for category_url in set(html.xpath("//div[@id='category']//a[@target='_blank']/@href")):
             category_url += "1/index.html"
             yield Request(category_url, callback=self.parse_category)
 
@@ -27,7 +28,7 @@ class HtmlParser:
         """
         html = self._get_dom(body)
         # 未访问的公司链接
-        for company_url in html.xpath("//ul[@class='searchResultList']//a[@class='comtitle']/@href"):
+        for company_url in set(html.xpath("//ul[@class='searchResultList']//a[@class='comtitle']/@href")):
             company_url += "introduce/"
             yield Request(company_url, callback=self.parse_company)
 
@@ -58,11 +59,12 @@ class HtmlParser:
             procurement = ''.join(info.xpath("//td[text()='采购的产品：']/following-sibling::td[1]//text()")).strip()
             mainIndustry = ''.join(info.xpath("//td[text()='主营行业：']/following-sibling::td[1]//text()")).strip()
 
-            data = [name, classify, location, scale, capital, year, dataAuthentication,
-                    margin, sale, products, procurement, mainIndustry]
+            data = dict(name=name, classify=classify, location=location, scale=scale, capital=capital, year=year,
+                        dataAuthentication=dataAuthentication, margin=margin, sale=sale, products=products,
+                        procurement=procurement, mainIndustry=mainIndustry)
             yield data
-        except Exception as e:
-            logger.error("提取数据失败" + e)
+        except BaseException:
+            raise ExtractDataFailed()
 
     def _get_dom(self, body):
         dom = etree.HTML(body)
