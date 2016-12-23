@@ -9,7 +9,7 @@ class HtmlDownloader:
     def __init__(self):
         self.download_number = 0
 
-    async def download(self, request):
+    async def download(self, url):
         """
         根据请求下载网页
         :param request: 下载请求
@@ -17,10 +17,10 @@ class HtmlDownloader:
         """
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(request.url) as response:
+                async with session.get(url) as response:
                     if response.status == 200:
                         body = await response.text()  # 获取请求的响应
-                        logger.info(request.url + " 下载完成")
+                        logger.info(url + " 下载完成")
                         self.download_number += 1
                         return body
         except BaseException:

@@ -4,8 +4,7 @@
     <option name="serverConfigurations">
       <list>
         <ServerConfiguration>
-          <option name="connectOnIdeStartup" value="true" />
-          <option name="label" value="wangbin-kraken" />
+          <option name="label" value="kraken" />
           <option name="serverUrls">
             <list>
               <option value="localhost:27017" />
@@ -14,10 +13,9 @@
           <option name="sshTunnelingConfiguration">
             <SshTunnelingConfiguration />
           </option>
-          <option name="userDatabase" value="CompanyCrawler" />
         </ServerConfiguration>
       </list>
     </option>
-    <option name="shellPath" value="C:\Program Files\MongoDB\Server\3.4\bin\mongo.exe" />
+    <option name="shellPath" value="/usr/bin/mongo" />
   </component>
 </project>

@@ -1,7 +1,8 @@
-from request import Request
 from lxml import etree
 import logging
-from errors import ExtractDataFailed
+from errors import ExtractDataFailed, WrongUrl
+import re
+from downloader import HtmlDownloader
 
 logger = logging.getLogger("crawlLog")
 
@@ -10,15 +11,33 @@ class HtmlParser:
     """
     解析器类，定义各层页面的解析函数
     """
+    def __init__(self):
+        self.downloader = HtmlDownloader()
+
+    async def parse_url(self, url):
+        result = None
+        html = await self.downloader.download(url)
+        if re.match(r'^http://.+\.yellowurl\.cn/introduce/', url):
+            result = self.parse_company(html)
+        elif re.match(r'^http://company\.yellowurl\.cn/catalogs/\d{3,8}/\d{1,5}/index\.html', url):
+            result = self.parse_category(html)
+        elif re.match(r'^http://company\.yellowurl\.cn/', url):
+            result = self.parse_index(html)
+        else:
+            raise WrongUrl()
+        return result
+
     def parse_index(self, body):
         """
         解析首页：'http://company.yellowurl.cn/'
         :param body: 网页的字符串
         """
+        urls = []
         html = self._get_dom(body)
         for category_url in set(html.xpath("//div[@id='category']//a[@target='_blank']/@href")):
             category_url += "1/index.html"
-            yield Request(category_url, callback=self.parse_category)
+            urls.append(category_url)
+        return urls
 
     def parse_category(self, body):
         """
@@ -27,14 +46,16 @@ class HtmlParser:
         :return:
         """
         html = self._get_dom(body)
+        urls = []
         # 未访问的公司链接
         for company_url in set(html.xpath("//ul[@class='searchResultList']//a[@class='comtitle']/@href")):
             company_url += "introduce/"
-            yield Request(company_url, callback=self.parse_company)
+            urls.append(company_url)
 
         # 未访问的目录链接
         for next_page in html.xpath("//input[@id='destoon_next']/@value"):
-            yield Request(next_page, callback=self.parse_category)
+            urls.append(next_page)
+        return urls
 
     def parse_company(self, body):
         """
@@ -62,7 +83,7 @@ class HtmlParser:
             data = dict(name=name, classify=classify, location=location, scale=scale, capital=capital, year=year,
                         dataAuthentication=dataAuthentication, margin=margin, sale=sale, products=products,
                         procurement=procurement, mainIndustry=mainIndustry)
-            yield data
+            return data
         except BaseException:
             raise ExtractDataFailed()
 

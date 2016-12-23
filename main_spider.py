@@ -1,8 +1,6 @@
-from downloader import HtmlDownloader
 from html_parser import HtmlParser
-from store import Storer
-from request import Request
-from request_manager import RequestManager
+from store import Saver
+from url_manager import UrlManager
 import asyncio
 import logging
 import time
@@ -22,60 +20,54 @@ logger.setLevel(logging.INFO)
 
 
 class MainSpider:
+    """调度类，控制运行流程"""
+
     def __init__(self, max_tasks=10, loop=None):
         self.loop = loop or asyncio.get_event_loop()
-        self.downloader = HtmlDownloader()
         self.parser = HtmlParser()
-        self.storer = Storer()
-        self.request_manager = RequestManager()
+        self.saver = Saver()
+        self.url_manager = UrlManager()
 
         self.max_tasks = max_tasks
 
         # 初始化队列
-        if not self.request_manager:
-            self.request_manager.put(Request("http://company.yellowurl.cn/",
-                                             self.parser.parse_index))
+        if not self.url_manager:
+            self.url_manager.put("http://company.yellowurl.cn/")
 
     async def work(self):
-        while self.request_manager:
+        while self.url_manager:
             try:
-                request = self.request_manager.get()
-                html = await self.downloader.download(request)
-                for req_or_data in request.callback(html):
-                    if isinstance(req_or_data, Request):
-                        self.request_manager.put(req_or_data)
-                    else:
-                        self.storer.save(req_or_data)
-                self.request_manager.complete(request)
+                url = self.url_manager.get()
+                urls_or_data = await self.parser.parse_url(url)
+
+                if isinstance(urls_or_data, list):
+                    self.url_manager.put_many(urls_or_data)
+                else:
+                    self.saver.save(urls_or_data)
+                self.url_manager.complete(url)
             except errors.DataBaseNull:
                 await asyncio.sleep(0.01)
                 continue
             except errors.DownloadFailed:
-                logger.error(request.url + "下载失败")
+                logger.error(url + "下载失败")
+            except errors.WrongUrl:
+                self.url_manager.complete(url)
+                logger.error("错误的url: " + url)
             except errors.ExtractDataFailed:
-                logger.error(request.url + "提取数据失败")
+                logger.error(url + "提取数据失败")
             except errors.SaveDataFailed:
-                logger.error(request.url + "存储数据失败")
+                logger.error(url + "存储数据失败")
 
     def close(self):
         """释放资源"""
-        pass
-
-    async def bound_worker(self, sem):
-        async with sem:
-            await self.work()
+        self.saver.close()
 
     async def crawl(self):
-        try:
-            sem = asyncio.Semaphore(1000)
-            workers = [asyncio.ensure_future(self.bound_worker(sem), loop=self.loop)
-                       for _ in range(self.max_tasks)]
-            await asyncio.gather(*workers)
-        except Exception as e:
-            print("something was wrong")
-            raise e
-        finally:
-            self.close()
+        workers = [asyncio.ensure_future(self.work(), loop=self.loop)
+                   for _ in range(self.max_tasks)]
+        await asyncio.gather(*workers)
+
+        self.close()
 
     def print_log(self, interval=60):
         minutes = 0
@@ -83,15 +75,16 @@ class MainSpider:
             time.sleep(interval)
             minutes += 1
             logger.info("-------爬取{}个网页({}/min)， 保存{}条数据({}/min)".
-                        format(self.downloader.download_number, self.downloader.download_number // minutes,
-                               self.storer.num, self.storer.num // minutes) +
+                        format(self.parser.downloader.download_number, self.parser.downloader.download_number // minutes,
+                               self.saver.num, self.saver.num // minutes) +
                         " 用时{}分钟".format(minutes) + "-------")
+
 
 if __name__ == '__main__':
     from threading import Thread
 
     loop = asyncio.get_event_loop()
-    s = MainSpider(max_tasks=10000, loop=loop)
+    s = MainSpider(max_tasks=1000, loop=loop)
 
     t = Thread(target=s.print_log, daemon=True)
     t.start()
